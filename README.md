@@ -1,58 +1,110 @@
-# Onion Mininet Demo
+# Multi-Hop Onion Routing Network Demonstration
 
-Tiny onion-routing lab built on Mininet: `h1` wraps a payload in three AES-GCM layers, hops through `r1 -> r2 -> r3`, and lands on `h2` where a simple server echoes back. Keys and routes are generated fresh each run and written to `runtime/`.
+Python and Mininet network security project demonstrating layered encryption and multi-hop message forwarding across a simulated three-router topology.
 
-## Requirements
-- Linux with sudo (Mininet needs root). Tested on Ubuntu 22.04 LTS and Linux Mint.
-- Mininet + `xterm` (for optional terminals); `sudo apt install mininet xterm`
-- Python 3.10+; `python3 -m pip install --user cryptography`
-- Optional: Wireshark or tcpdump for packet capture
+The client wraps each message in three AES-GCM layers. Each router decrypts only its assigned layer before forwarding the remaining payload. Packet captures verify that the message remains encrypted at an intermediate hop and appears as plaintext only after the final layer is removed.
 
-## Quickstart (recommended)
+## Network Topology
+
+```mermaid
+graph LR
+    H1["h1 - Client"] --> R1["r1"]
+    R1 --> R2["r2"]
+    R2 --> R3["r3"]
+    R3 --> H2["h2 - Server"]
+```
+
+## How It Works
+
+1. `net.py` builds the Mininet topology and generates fresh 256-bit AES-GCM keys and routing data.
+2. `client.py` creates a three-layer onion, with the outermost layer intended for `r1`.
+3. Each router decrypts only its assigned layer and forwards the remaining onion to the next hop.
+4. `r3` removes the final layer and delivers the recovered plaintext to the destination server.
+5. `server.py` receives the message and returns `OK` to the client.
+
+## Verification
+
+### Encrypted Intermediate Hop
+
+<p align="center">
+  <a href="evidence/wireshark-encrypted-intermediate-hop.png">
+    <img src="evidence/wireshark-encrypted-intermediate-hop-preview.png"
+         alt="Wireshark capture showing encrypted payload between r1 and r2"
+         width="650">
+  </a>
+</p>
+
+Traffic captured between `r1` and `r2` shows the AES-GCM `nonce` and encrypted `payload` fields. The test message `HELLO_WORLD` is not visible at this intermediate hop.
+
+### Plaintext at the Destination
+
+<p align="center">
+  <a href="evidence/wireshark-decrypted-destination-hop.png">
+    <img src="evidence/wireshark-decrypted-destination-hop-preview.png"
+         alt="Wireshark capture showing plaintext at the destination"
+         width="650">
+  </a>
+</p>
+
+After `r3` removes the final encryption layer, `HELLO_WORLD` is visible in the traffic delivered to the destination server.
+
+### Demo
+
+[View the recorded end-to-end demonstration](evidence/onion-routing-demo.mp4)
+
+Additional evidence is preserved under [`evidence/`](evidence/).
+
+## Implementation
+
+| File                         | Role                                                                                                       |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| [`net.py`](net.py)           | Creates the Mininet topology, configures routing, generates per-router keys, and launches network services |
+| [`onion.py`](onion.py)       | Builds the layered AES-GCM onion payload                                                                   |
+| [`node.py`](node.py)         | Implements the router service used by `r1`, `r2`, and `r3`                                                 |
+| [`client.py`](client.py)     | Builds and sends the onion payload and reports the server response                                         |
+| [`server.py`](server.py)     | Receives the final plaintext application payload and returns `OK`                                          |
+| [`settings.py`](settings.py) | Stores shared network and application configuration                                                        |
+
+## Quickstart
+
+Requirements include Linux, Python 3, Mininet, and `python3-cryptography`.
+
+Install the required packages:
+
 ```bash
-git clone https://github.com/Thuler14/onion_mininet.git
-cd onion_mininet
-# If you downloaded a ZIP instead of cloning:
-# unzip onion_mininet.zip && cd onion_mininet
+sudo apt update
+sudo apt install mininet python3-cryptography
+```
 
-# Start the topology (add --xterms if you want capture terminals)
+Start the topology:
+
+```bash
 sudo python3 net.py
-# or, to open xterms on r1,r2,r3,h2,h1 for Wireshark/tcpdump
-sudo python3 net.py --xterms
 ```
 
-You land in the Mininet CLI; services are already running and `runtime/routes.json` plus router keys are in place. In any xterm (e.g., `r1`), start a capture if you want:
+From the Mininet CLI, send a message:
+
 ```bash
-wireshark &
-# or
-tcpdump -n -i r1-eth1 tcp
-tcpdump -n -i h2-eth0 tcp port 9009
+h1 python3 client.py --message "HELLO_WORLD"
 ```
 
-From the Mininet CLI, send traffic (onion is rebuilt each time unless you reuse):
-```bash
-h1 python3 client.py --message "HELLO"    # build + send custom payload
-h1 python3 client.py                      # build + send default payload
-h1 python3 client.py --reuse              # resend existing runtime/onion.out
+A successful transmission returns:
+
+```text
+[CLIENT] elapsed ...
+[CLIENT] Server reply: OK
 ```
 
-Two-step build + send if you prefer:
-```bash
-h1 python3 onion.py --message "HELLO"
-h1 python3 client.py --onion-file runtime/onion.out
-```
+For setup options and additional message workflows, see [`docs/usage.md`](docs/usage.md).
 
-Quit with `exit`; Mininet tears down. Logs and artifacts live in `runtime/` (router logs, server log, `routes.json`, `onion.out`).
+For tcpdump and Wireshark inspection procedures, see [`docs/verification.md`](docs/verification.md).
 
-## Headless mode
-Skip xterms and run everything inside the CLI:
-```bash
-sudo python3 net.py
-```
-Start captures from the CLI (e.g., `r1 tcpdump -n -i r1-eth1 tcp`) before sending with the same `h1 python3 ...` commands above.
+## Scope and Limitations
 
-## What’s happening under the hood
-- `net.py` builds a 3-hop topology, generates per-run AES keys, writes `runtime/routes.json`, and launches router/server processes.
-- `onion.py` wraps the message in layered AES-GCM, producing `runtime/onion.out`.
-- `client.py` sends the blob to the first hop and prints the echoed reply + timing.
-- `node.py` peels/forwards layers; `server.py` echoes and logs the final payload.
+This project is a focused demonstration of onion-style layered encryption and multi-hop forwarding in a controlled Mininet environment. It is not an implementation of Tor or a production anonymity network.
+
+Key limitations include:
+
+- Route information and router keys are generated centrally by `net.py`.
+- The project does not implement distributed circuit establishment or key exchange.
+- Onion encryption protects the forward application payload through the router path; the server response travels back through the established proxy connections rather than through a separately onion-encrypted reverse path.
