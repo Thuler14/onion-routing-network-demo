@@ -50,7 +50,7 @@ After `r3` removes the final encryption layer, `HELLO_WORLD` is visible in the t
 
 ### Demo
 
-[View the recorded end-to-end demonstration](evidence/onion-routing-demo.mp4)
+[Watch the end-to-end demonstration on YouTube](https://youtu.be/q43QMXfRWjI)
 
 Additional evidence is preserved under [`evidence/`](evidence/).
 
